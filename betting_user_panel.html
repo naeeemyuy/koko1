@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Betting Site - User Panel (with Navigation)</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#111; color:#fff; padding: 20px; }
+  input, button {
+    padding: 10px; margin: 10px 0; border-radius:5px; border:none;
+  }
+  button {
+    background: gold; font-weight: bold; cursor: pointer;
+  }
+  .nav-buttons {
+    margin-bottom: 20px;
+  }
+  .nav-buttons button {
+    width: auto;
+    margin-right: 10px;
+    background: #444;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+  }
+  .nav-buttons button.active {
+    background: gold;
+    color: black;
+  }
+  .section {
+    background: #222; padding: 20px; border-radius: 10px; margin-bottom: 20px;
+    display: none;
+  }
+  .match, .bet-item {
+    background: #333; padding: 10px; border-radius: 6px; margin-bottom: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h2>🔥 Betting Site - User Panel</h2>
+
+<div id="authSection" class="section" style="display:block;">
+  <h3>🔐 Login</h3>
+  <input type="email" id="email" placeholder="Enter your email" />
+  <input type="password" id="password" placeholder="Enter your password" />
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="userPanel" style="display:none;">
+  <div class="nav-buttons">
+    <button class="nav-btn active" data-section="matchListSection">🎮 Matches</button>
+    <button class="nav-btn" data-section="userHistorySection">🧾 My Bets</button>
+    <button class="nav-btn" data-section="withdrawSection">💸 Withdraw</button>
+    <button class="nav-btn" data-section="leaderboardSection">🏆 Leaderboard</button>
+    <button onclick="logout()" style="float:right; background:#e74c3c; color:#fff;">Logout</button>
+  </div>
+
+  <div id="matchListSection" class="section" style="display:block;">
+    <h3>🎮 Live Matches</h3>
+    <div id="matchList"></div>
+  </div>
+
+  <div id="userHistorySection" class="section">
+    <h3>🧾 Your Bet History</h3>
+    <div id="userHistory"></div>
+  </div>
+
+  <div id="withdrawSection" class="section">
+    <h3>💸 Withdraw Money</h3>
+    <input type="number" id="withdrawAmount" placeholder="Amount (৳)" />
+    <input type="text" id="bkashNumber" placeholder="bKash Number" />
+    <button onclick="withdraw()">Withdraw</button>
+  </div>
+
+  <div id="leaderboardSection" class="section">
+    <h3>🏆 Leaderboard</h3>
+    <div id="leaderboard"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCP9GGU_sJ3xbQs0TUQODMfy3uMW4vkzzo",
+  authDomain: "towhid-28aaa.firebaseapp.com",
+  databaseURL: "https://towhid-28aaa-default-rtdb.firebaseio.com",
+  projectId: "towhid-28aaa",
+  storageBucket: "towhid-28aaa.appspot.com",
+  messagingSenderId: "450259388049",
+  appId: "1:450259388049:web:78e6bc0672b6e40c637e0f"
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.database();
+
+let currentUser = null;
+
+function login() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value.trim();
+  if (!email || !password) return alert("Please fill all fields");
+
+  auth.signInWithEmailAndPassword(email, password)
+    .then(res => {
+      currentUser = res.user;
+      document.getElementById('authSection').style.display = 'none';
+      document.getElementById('userPanel').style.display = 'block';
+      loadMatches();
+      loadUserHistory();
+      loadLeaderboard();
+    })
+    .catch(e => alert("Login failed: " + e.message));
+}
+
+function logout() {
+  auth.signOut().then(() => {
+    currentUser = null;
+    document.getElementById('userPanel').style.display = 'none';
+    document.getElementById('authSection').style.display = 'block';
+  });
+}
+
+// Navigation buttons logic
+const navButtons = document.querySelectorAll('.nav-btn');
+navButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    navButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.section').forEach(sec => {
+      if (sec.id !== 'authSection') sec.style.display = 'none';
+    });
+    const sectionId = btn.getAttribute('data-section');
+    document.getElementById(sectionId).style.display = 'block';
+  });
+});
+
+function loadMatches() {
+  const list = document.getElementById('matchList');
+  db.ref('games').on('value', snap => {
+    list.innerHTML = '';
+    snap.forEach(child => {
+      const game = child.val();
+      const id = child.key;
+      const div = document.createElement('div');
+      div.className = 'match';
+      div.innerHTML = `
+        <strong>${game.name}</strong><br>🕒 ${game.time}<br>
+        <input type="number" min="1" placeholder="৳ Bet Amount" id="bet-${id}">
+        <button onclick="submitBet('${id}')">Place Bet</button>
+      `;
+      list.appendChild(div);
+    });
+  });
+}
+
+function submitBet(gameId) {
+  const amount = document.getElementById('bet-' + gameId).value;
+  if (!amount || amount <= 0) return alert("Enter valid bet amount");
+  db.ref('bids/' + gameId + '/' + currentUser.uid).set({
+    user: currentUser.email,
+    amount: parseInt(amount),
+    time: new Date().toLocaleString()
+  }).then(() => alert("✅ Bet placed successfully!"))
+    .catch(e => alert("Failed to place bet: " + e.message));
+}
+
+function loadUserHistory() {
+  const history = document.getElementById('userHistory');
+  db.ref('bids').on('value', snap => {
+    history.innerHTML = '';
+    snap.forEach(match => {
+      const bid = match.child(currentUser.uid);
+      if (bid.exists()) {
+        const b = bid.val();
+        history.innerHTML += '<div class="bet-item">📌 ' + b.user + ' ➡ ৳' + b.amount + ' (' + b.time + ')</div>';
+      }
+    });
+  });
+}
+
+function withdraw() {
+  const amount = document.getElementById('withdrawAmount').value;
+  const number = document.getElementById('bkashNumber').value.trim();
+  if (!amount || amount <= 0) return alert("Enter valid withdrawal amount");
+  if (!number) return alert("Enter bKash number");
+  db.ref('withdrawals/' + currentUser.uid).push({
+    amount: parseInt(amount),
+    method: 'bkash',
+    number: number,
+    status: 'pending',
+    time: new Date().toLocaleString()
+  }).then(() => alert("✅ Withdrawal request submitted"))
+    .catch(e => alert("Failed to submit request: " + e.message));
+}
+
+function loadLeaderboard() {
+  const board = document.getElementById('leaderboard');
+  db.ref('bids').on('value', snap => {
+    const totals = {};
+    snap.forEach(match => {
+      match.forEach(bid => {
+        const b = bid.val();
+        if (!totals[b.user]) totals[b.user] = 0;
+        totals[b.user] += parseInt(b.amount);
+      });
+    });
+    const sorted = Object.entries(totals).sort((a,b) => b[1]-a[1]);
+    board.innerHTML = '';
+    sorted.forEach(([user, total], i) => {
+      board.innerHTML += '<div>🏅 ' + (i+1) + '. ' + user + ' ➡ ৳' + total + '</div>';
+    });
+  });
+}
+</script>
+
+</body>
+</html>
